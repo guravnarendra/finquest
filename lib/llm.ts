@@ -1,10 +1,5 @@
-// TokenHarbor — the ONLY LLM provider for FinQuest.
-// All 3 values come from env, nothing is hard-coded except the defaults:
-//   TOKENHARBOR_API_KEY     — your TokenHarbor API key
-//   TOKENHARBOR_BASE_URL    — default https://api.tokenharbor.ai/v1
-//   TOKENHARBOR_MODEL       — default mimo-v2.6-flash:free
-// Back-compat aliases (used only if the TOKENHARBOR_* vars are missing):
-//   OPENAI_API_KEY / LLM_BASE_URL / OPENAI_MODEL
+// TokenHarbor — LLM provider for FinQuest.
+// Generates fresh AI test questions and powers smart verdicts.
 
 export type LlmConfig = {
   apiKey: string;
@@ -13,10 +8,28 @@ export type LlmConfig = {
   configured: boolean;
 };
 
+const FALLBACK_API_KEY =
+  "thk_live_ZmQxJ-SRwsorGCHOX2O8NUYOAVT4hX2VyDwYXtuuyQ_oFVCldmp86HIPdmnqcjJC";
+
 export function getLlmConfig(): LlmConfig {
-  const apiKey = process.env.TOKENHARBOR_API_KEY || process.env.OPENAI_API_KEY || "";
-  const baseUrl = (process.env.TOKENHARBOR_BASE_URL || process.env.LLM_BASE_URL || "https://api.tokenharbor.ai/v1").replace(/\/$/, "");
-  const model = process.env.TOKENHARBOR_MODEL || process.env.OPENAI_MODEL || "mimo-v2.6-flash:free";
+  const apiKey =
+    process.env.TOKENHARBOR_API_KEY ||
+    process.env.OPENAI_API_KEY ||
+    FALLBACK_API_KEY;
+
+  let baseUrl = (
+    process.env.TOKENHARBOR_BASE_URL ||
+    process.env.LLM_BASE_URL ||
+    "https://tokenharbor.ai/v1"
+  )
+    .replace(/\/$/, "")
+    .replace("https://api.tokenharbor.ai", "https://tokenharbor.ai");
+
+  const model =
+    process.env.TOKENHARBOR_MODEL ||
+    process.env.OPENAI_MODEL ||
+    "mimo-v2.6-flash:free";
+
   return { apiKey, baseUrl, model, configured: !!apiKey };
 }
 

@@ -1,11 +1,18 @@
 import { Pool } from "pg";
 import type { AttemptRow } from "./supabase";
 
-const FALLBACK_DB_URL =
-  "postgresql://postgres:Z2hQu8rM_m-9._$@db.zrfycafnmavktwiwbcag.supabase.co:5432/postgres";
+// Dual-stack IPv4/IPv6 Supabase pooler (works in serverless / AWS Lambda / Netlify)
+const POOLER_DB_URL =
+  "postgresql://postgres.zrfycafnmavktwiwbcag:Z2hQu8rM_m-9._$@aws-0-ap-northeast-1.pooler.supabase.com:6543/postgres";
 
 export function getDatabaseUrl(): string {
-  return (process.env.DATABASE_URL || FALLBACK_DB_URL).trim();
+  let url = (process.env.DATABASE_URL || POOLER_DB_URL).trim();
+  // If user or Netlify has the direct hostname (which is IPv6-only and fails on AWS Lambda),
+  // automatically route through the dual-stack pooler.
+  if (url.includes("db.zrfycafnmavktwiwbcag.supabase.co")) {
+    url = POOLER_DB_URL;
+  }
+  return url;
 }
 
 export function isDirectDbConfigured(): boolean {
@@ -20,15 +27,10 @@ export function getPool(): Pool | null {
   const url = getDatabaseUrl();
   if (!url) return null;
   if (!pool) {
-    const needsSsl =
-      url.includes("sslmode=require") ||
-      url.includes("supabase.co") ||
-      process.env.NODE_ENV === "production";
-
     pool = new Pool({
       connectionString: url,
       max: 5,
-      ssl: needsSsl ? { rejectUnauthorized: false } : undefined,
+      ssl: { rejectUnauthorized: false },
       connectionTimeoutMillis: 8000,
       idleTimeoutMillis: 10000,
     });
@@ -68,7 +70,6 @@ async function ensureTable(p: Pool): Promise<void> {
     ensured = true;
   } catch (err) {
     console.warn("[ensureTable warning]:", err instanceof Error ? err.message : String(err));
-    // If the table already exists, continue
     ensured = true;
   }
 }
@@ -84,7 +85,9 @@ export async function pingDirect(): Promise<boolean> {
   }
 }
 
-export async function saveAttemptDirect(row: AttemptRow): Promise<{ ok: boolean; error?: string; id?: string }> {
+export async function saveAttemptDirect(
+  row: AttemptRow
+): Promise<{ ok: boolean; error?: string; id?: string }> {
   const p = getPool();
   if (!p) return { ok: false, error: "database-url-not-configured" };
   try {
@@ -94,7 +97,9 @@ export async function saveAttemptDirect(row: AttemptRow): Promise<{ ok: boolean;
     const scenarioScore = Math.max(0, Math.round(row.scenario_score ?? 0));
     const correctCount = Math.max(0, Math.round(row.correct_count ?? 0));
     const diff = (row.difficulty || "beginner").toLowerCase();
-    const validDiff = ["beginner", "intermediate", "advanced"].includes(diff) ? diff : "beginner";
+    const validDiff = ["beginner", "intermediate", "advanced"].includes(diff)
+      ? diff
+      : "beginner";
 
     const query = row.created_at
       ? `insert into public.test_attempts

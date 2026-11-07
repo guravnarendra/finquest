@@ -1,9 +1,22 @@
 import { NextResponse } from "next/server";
 import { buildVerdict, scoreScenario, type ScenarioResult } from "@/lib/scoring";
-import { SCENARIOS, type Scenario } from "@/lib/questions";
+import { SCENARIOS, type Scenario, type Topic, type Difficulty } from "@/lib/questions";
+import { getLlmConfig } from "@/lib/llm";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+
+type ScenarioPayload = {
+  questionId: string;
+  answer: string;
+  title?: string;
+  situation?: string;
+  prompt?: string;
+  keywords?: string[];
+  redFlags?: string[];
+  ideal?: string;
+  topic?: string;
+};
 
 type Body = {
   playerName?: string;
@@ -12,10 +25,8 @@ type Body = {
   totalMcq?: number;
   strongTopics?: string[];
   weakTopics?: string[];
-  scenarioAnswers?: { questionId: string; answer: string }[];
+  scenarioAnswers?: ScenarioPayload[];
 };
-
-import { getLlmConfig } from "@/lib/llm";
 
 async function llmVerdict(body: Body, scenarioResults: ScenarioResult[], mcqScore: number) {
   const { apiKey: key, baseUrl: base, model } = getLlmConfig();
@@ -34,23 +45,75 @@ async function llmVerdict(body: Body, scenarioResults: ScenarioResult[], mcqScor
     const text: string = data?.choices?.[0]?.message?.content || "";
     const json = text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1);
     return JSON.parse(json);
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as Body;
     const scenarioResults: ScenarioResult[] = (body.scenarioAnswers || []).map((a) => {
-      const s = SCENARIOS.find((x: Scenario) => x.id === a.questionId);
-      if (!s) return { questionId: a.questionId, topic: "General", title: "Scenario", answer: a.answer, score: 5, feedback: "Answer noted." };
+      let s = SCENARIOS.find((x: Scenario) => x.id === a.questionId);
+      if (!s && a.situation) {
+        s = {
+          kind: "scenario",
+          id: a.questionId,
+          topic: (a.topic as Topic) || "Risk",
+          difficulty: (body.difficulty as Difficulty) || "beginner",
+          title: a.title || "Scenario Question",
+          situation: a.situation,
+          prompt: a.prompt || "Tum kya karoge aur kyun? Apna decision likho.",
+          keywords: Array.isArray(a.keywords) ? a.keywords : ["sip", "invest", "long term", "average", "patience"],
+          redFlags: Array.isArray(a.redFlags) ? a.redFlags : ["panic sell", "sab bech do"],
+          ideal: a.ideal || "Long term discipline aur emergency fund zaroori hai.",
+          hint: "",
+        };
+      }
+      if (!s) {
+        return {
+          questionId: a.questionId,
+          topic: "General",
+          title: a.title || "Scenario",
+          answer: a.answer,
+          score: 6,
+          feedback: "Smart decision and discipline noted.",
+        };
+      }
       return scoreScenario(s, a.answer);
     });
+
     const mcqScore = body.mcqScore || 0;
     const totalScore = mcqScore + scenarioResults.reduce((a, r) => a + r.score, 0);
-    const fallback = buildVerdict({ playerName: body.playerName || "Player", totalScore, mcqScore, scenarioResults, strongTopics: body.strongTopics || [], weakTopics: body.weakTopics || [] });
+    const fallback = buildVerdict({
+      playerName: body.playerName || "Player",
+      totalScore,
+      mcqScore,
+      scenarioResults,
+      strongTopics: body.strongTopics || [],
+      weakTopics: body.weakTopics || [],
+    });
+
     const llm = await llmVerdict(body, scenarioResults, mcqScore);
-    const verdict = llm && llm.verdict ? { verdict: llm.verdict, strengths: llm.strengths || fallback.strengths, weaknesses: llm.weaknesses || fallback.weaknesses, riskProfile: llm.riskProfile || fallback.riskProfile, recommendations: llm.recommendations || fallback.recommendations } : fallback;
-    return NextResponse.json({ totalScore, mcqScore, scenarioScore: scenarioResults.reduce((a, r) => a + r.score, 0), scenarioResults, aiUsed: !!llm, ...verdict });
+    const verdict =
+      llm && llm.verdict
+        ? {
+            verdict: llm.verdict,
+            strengths: llm.strengths || fallback.strengths,
+            weaknesses: llm.weaknesses || fallback.weaknesses,
+            riskProfile: llm.riskProfile || fallback.riskProfile,
+            recommendations: llm.recommendations || fallback.recommendations,
+          }
+        : fallback;
+
+    return NextResponse.json({
+      totalScore,
+      mcqScore,
+      scenarioScore: scenarioResults.reduce((a, r) => a + r.score, 0),
+      scenarioResults,
+      aiUsed: !!llm,
+      ...verdict,
+    });
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }

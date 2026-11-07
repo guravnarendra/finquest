@@ -2,9 +2,21 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Play, Clock, Check, X, RotateCcw, BookOpen, Share2, Trophy, Brain, Sparkles, ChevronRight } from "lucide-react";
-import { pickTest, type Difficulty, type Question, SCENARIOS, type Scenario } from "@/lib/questions";
+import { pickTest, type Difficulty, type Question, SCENARIOS, type Scenario, type Topic } from "@/lib/questions";
 import { gradeFor, buildVerdict, scoreScenario } from "@/lib/scoring";
 import { setPlayerName, getPlayerName, cleanupLegacyStorage } from "@/lib/store";
+
+type ScenarioAns = {
+  questionId: string;
+  answer: string;
+  title?: string;
+  situation?: string;
+  prompt?: string;
+  keywords?: string[];
+  redFlags?: string[];
+  ideal?: string;
+  topic?: string;
+};
 
 type VerdictData = {
   totalScore: number; mcqScore: number; scenarioScore: number; aiUsed: boolean;
@@ -24,11 +36,12 @@ export default function TestPage() {
   const [strong, setStrong] = useState<string[]>([]);
   const [weak, setWeak] = useState<string[]>([]);
   const [scenarioText, setScenarioText] = useState("");
-  const [scenarioAnswers, setScenarioAnswers] = useState<{ questionId: string; answer: string }[]>([]);
+  const [scenarioAnswers, setScenarioAnswers] = useState<ScenarioAns[]>([]);
   const [review, setReview] = useState<{ q: Question; picked: number | null; correct: boolean }[]>([]);
   const [timeLeft, setTimeLeft] = useState(30);
   const [verdict, setVerdict] = useState<VerdictData | null>(null);
   const [loadingVerdict, setLoadingVerdict] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -57,13 +70,44 @@ export default function TestPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeLeft]);
 
-  function start() {
+  async function start() {
     const finalName = (name || "").trim() || getPlayerName() || "Player";
     setName(finalName);
     setPlayerName(finalName);
-    const qs = pickTest(difficulty);
-    setQuestions(qs); setIdx(0); setPicked(null); setMcqScore(0); setCorrectCount(0);
-    setStrong([]); setWeak([]); setScenarioText(""); setScenarioAnswers([]); setReview([]); setVerdict(null);
+
+    setGenerating(true);
+    let qs: Question[] = [];
+    try {
+      const res = await fetch(`/api/questions?difficulty=${difficulty}`, {
+        cache: "no-store",
+        signal: AbortSignal.timeout(15000),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.questions) && data.questions.length === 10) {
+          qs = data.questions;
+        }
+      }
+    } catch {
+      // Offline or API timeout fallback
+    }
+
+    if (!qs.length) {
+      qs = pickTest(difficulty);
+    }
+
+    setQuestions(qs);
+    setIdx(0);
+    setPicked(null);
+    setMcqScore(0);
+    setCorrectCount(0);
+    setStrong([]);
+    setWeak([]);
+    setScenarioText("");
+    setScenarioAnswers([]);
+    setReview([]);
+    setVerdict(null);
+    setGenerating(false);
     setPhase("playing");
   }
 
@@ -87,7 +131,7 @@ export default function TestPage() {
     setReview((r) => [...r, { q, picked: i, correct }]);
   }
 
-  function next(updatedAnswers?: { questionId: string; answer: string }[], updatedReview?: { q: Question; picked: number | null; correct: boolean }[]) {
+  function next(updatedAnswers?: ScenarioAns[], updatedReview?: { q: Question; picked: number | null; correct: boolean }[]) {
     const finalAnswers = updatedAnswers || scenarioAnswers;
     const finalRev = updatedReview || review;
     if (idx + 1 >= questions.length) finish(finalAnswers, finalRev);
@@ -98,7 +142,20 @@ export default function TestPage() {
     if (!q || q.kind !== "scenario") return;
     if (timerRef.current) clearInterval(timerRef.current);
     const ans = scenarioText.trim() || "(koi answer nahi likha)";
-    const newAnswers = [...scenarioAnswers, { questionId: q.id, answer: ans }];
+    const newAnswers: ScenarioAns[] = [
+      ...scenarioAnswers,
+      {
+        questionId: q.id,
+        answer: ans,
+        title: q.title,
+        situation: q.situation,
+        prompt: q.prompt,
+        keywords: q.keywords,
+        redFlags: q.redFlags,
+        ideal: q.ideal,
+        topic: q.topic,
+      },
+    ];
     const newReview = [...review, { q, picked: null, correct: false }];
     setScenarioAnswers(newAnswers);
     setReview(newReview);
@@ -135,8 +192,23 @@ export default function TestPage() {
     // Offline / API error fallback: use local rule-based scoring & verdict
     if (!data || !data.verdict) {
       const scenarioResults = finalAnswers.map((a) => {
-        const s = SCENARIOS.find((x: Scenario) => x.id === a.questionId);
-        if (!s) return { questionId: a.questionId, topic: "General", title: "Scenario", answer: a.answer, score: 5, feedback: "Answer noted." };
+        let s = SCENARIOS.find((x: Scenario) => x.id === a.questionId);
+        if (!s && a.situation) {
+          s = {
+            kind: "scenario",
+            id: a.questionId,
+            topic: (a.topic as Topic) || "Risk",
+            difficulty,
+            title: a.title || "Scenario",
+            situation: a.situation,
+            prompt: a.prompt || "",
+            keywords: a.keywords || ["sip", "invest", "long term"],
+            redFlags: a.redFlags || ["panic", "sell all"],
+            ideal: a.ideal || "",
+            hint: "",
+          };
+        }
+        if (!s) return { questionId: a.questionId, topic: "General", title: a.title || "Scenario", answer: a.answer, score: 6, feedback: "Smart thinking noted." };
         return scoreScenario(s, a.answer);
       });
       const scenarioScore = scenarioResults.reduce((acc, r) => acc + r.score, 0);
@@ -193,12 +265,33 @@ export default function TestPage() {
   }, [verdict]);
 
   if (phase === "intro") {
+    if (generating) {
+      return (
+        <div className="space-y-4">
+          <div className="card pop p-8 text-center">
+            <Brain className="mx-auto animate-pulse" size={44} style={{ color: "#34d399" }} />
+            <h2 className="mt-4 text-[21px] font-black leading-tight">
+              AI naye questions generate kar raha hai… 🤖
+            </h2>
+            <p className="muted mt-2 text-[14px] leading-relaxed">
+              TokenHarbor AI aapke <span className="text-white font-bold capitalize">{difficulty}</span> level ke liye
+              7 fresh MCQ aur 3 real-world scenario questions bana raha hai.
+            </p>
+            <div className="mt-5 flex justify-center gap-2">
+              <span className="chip" style={{ color: "#34d399" }}>✨ 100% Unique Questions</span>
+              <span className="chip" style={{ color: "#f59e0b" }}>⚡ Live AI Model</span>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="space-y-4">
         <div className="card pop p-5">
           <div className="chip" style={{ color: "#f59e0b" }}>🤖 AI TEST • 10 QUESTIONS</div>
           <h1 className="mt-3 text-[26px] font-black leading-tight">Apna Investor IQ<br />check karo</h1>
-          <p className="muted mt-1 text-[14px]">7 MCQ (3 options) + 3 real-life scenario. MCQ me turant Right/Wrong, scenario me AI tumhare answer ko judge karega.</p>
+          <p className="muted mt-1 text-[14px]">7 MCQ (3 options) + 3 real-life scenario. Har test AI se fresh aur unique generate hota hai!</p>
           <div className="mt-4 flex items-center justify-between">
             <label className="text-[13px] font-bold">Tumhara naam (leaderboard ke liye)</label>
             {name.trim() ? (
@@ -228,9 +321,9 @@ export default function TestPage() {
           <div className="mt-4 grid grid-cols-3 gap-2 text-center text-[12px] font-bold">
             <div className="card2 p-2.5">⏱️ MCQ 30s<br /><span className="muted">Scenario 2 min</span></div>
             <div className="card2 p-2.5">💯 Total 100<br /><span className="muted">MCQ 70 + AI 30</span></div>
-            <div className="card2 p-2.5">🧠 AI Verdict<br /><span className="muted">End me full report</span></div>
+            <div className="card2 p-2.5">🧠 AI Generated<br /><span className="muted">Live LLM Quiz</span></div>
           </div>
-          <button className="btn-primary mt-4 flex items-center justify-center gap-2" onClick={start}><Play size={19} /> Start Test</button>
+          <button className="btn-primary mt-4 flex items-center justify-center gap-2" onClick={start} disabled={generating}><Play size={19} /> Start Test (AI Generated)</button>
           <Link href="/learn" className="btn-ghost mt-2 w-full">Pehle thoda seekh lun → Learn</Link>
         </div>
       </div>

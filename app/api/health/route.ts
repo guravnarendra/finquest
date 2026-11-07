@@ -4,6 +4,7 @@ import { pingDirect } from "@/lib/db";
 import { llmPublicInfo } from "@/lib/llm";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 // GET /api/health — check what is actually wired up, without leaking keys.
 // { db: { source: "direct"|"supabase"|"none", pingOk }, llm: { configured, baseUrl, model } }
