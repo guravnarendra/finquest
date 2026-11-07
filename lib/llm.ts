@@ -1,5 +1,13 @@
-// TokenHarbor — LLM provider for FinQuest.
-// Generates fresh AI test questions and powers smart verdicts.
+// LLM Provider Configuration for FinQuest.
+// Generates fresh questions and smart AI verdicts in real-time.
+
+import dns from "node:dns";
+
+try {
+  dns.setDefaultResultOrder("ipv4first");
+} catch {
+  // Environments without node:dns
+}
 
 export type LlmConfig = {
   apiKey: string;
