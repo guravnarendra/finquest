@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Play, Clock, Check, X, RotateCcw, BookOpen, Share2, Trophy, Brain, Sparkles, ChevronRight } from "lucide-react";
 import { pickTest, type Difficulty, type Question, SCENARIOS, type Scenario } from "@/lib/questions";
 import { gradeFor, buildVerdict, scoreScenario } from "@/lib/scoring";
-import { saveLocalAttempt, setPlayerName, getPlayerName, markAttemptSynced } from "@/lib/store";
+import { setPlayerName, getPlayerName, cleanupLegacyStorage } from "@/lib/store";
 
 type VerdictData = {
   totalScore: number; mcqScore: number; scenarioScore: number; aiUsed: boolean;
@@ -37,7 +37,10 @@ export default function TestPage() {
   const totalTime = isMcq ? 30 : 120;
   const progress = questions.length ? ((idx + (picked !== null || phase === "result" ? 1 : 0)) / questions.length) * 100 : 0;
 
-  useEffect(() => { setName(getPlayerName()); }, []);
+  useEffect(() => {
+    setName(getPlayerName());
+    cleanupLegacyStorage();
+  }, []);
   useEffect(() => {
     if (phase !== "playing" || !q) return;
     setTimeLeft(totalTime);
@@ -159,44 +162,28 @@ export default function TestPage() {
     setVerdict(data);
     setLoadingVerdict(false);
 
-    const attempt = {
-      id: `local-${Date.now()}`,
-      playerName: finalName,
-      difficulty,
-      score: data.totalScore,
-      mcqScore: data.mcqScore,
-      scenarioScore: data.scenarioScore,
-      correctCount,
-      grade: gradeFor(data.totalScore),
-      riskProfile: data.riskProfile,
-      verdict: data.verdict,
-      date: new Date().toISOString(),
-      synced: false,
-    };
-    saveLocalAttempt(attempt);
-
-    fetch("/api/attempts", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        player_name: finalName,
-        difficulty,
-        score: data.totalScore,
-        mcq_score: data.mcqScore,
-        scenario_score: data.scenarioScore,
-        correct_count: correctCount,
-        total_questions: 10,
-        grade: attempt.grade,
-        risk_profile: data.riskProfile,
-        verdict: data.verdict,
-        answers: finalReview,
-      }),
-    })
-      .then((r) => r.json())
-      .then((res) => {
-        if (res?.ok) markAttemptSynced(attempt.id);
-      })
-      .catch(() => {});
+    // Save score directly to live Database
+    try {
+      await fetch("/api/attempts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          player_name: finalName,
+          difficulty,
+          score: data.totalScore,
+          mcq_score: data.mcqScore,
+          scenario_score: data.scenarioScore,
+          correct_count: correctCount,
+          total_questions: 10,
+          grade: gradeFor(data.totalScore),
+          risk_profile: data.riskProfile,
+          verdict: data.verdict,
+          answers: finalReview,
+        }),
+      });
+    } catch (err) {
+      console.error("[Save Attempt DB Error]:", err);
+    }
   }
 
   const ring = useMemo(() => {

@@ -1,25 +1,21 @@
-// Unified attempts storage — priority order:
-//   1. Direct Postgres via DATABASE_URL  (lib/db.ts)  <- user asked for this
-//   2. Supabase anon client              (lib/supabase.ts)
-//   3. None — the browser keeps scores in localStorage instead.
-import { DIRECT_DB_CONFIGURED, fetchAttemptsDirect, saveAttemptDirect } from "./db";
+import { isDirectDbConfigured, fetchAttemptsDirect, saveAttemptDirect } from "./db";
 import { SUPABASE_CONFIGURED, fetchAttempts, saveAttempt, type AttemptRow } from "./supabase";
 
 export type DbSource = "direct" | "supabase" | "none";
 
 export function getDbSource(): DbSource {
-  if (DIRECT_DB_CONFIGURED) return "direct";
+  if (isDirectDbConfigured()) return "direct";
   if (SUPABASE_CONFIGURED) return "supabase";
   return "none";
 }
 
-export async function saveAttemptAny(row: AttemptRow): Promise<{ ok: boolean; source: DbSource; error?: string }> {
+export async function saveAttemptAny(
+  row: AttemptRow
+): Promise<{ ok: boolean; source: DbSource; error?: string; id?: string }> {
   const source = getDbSource();
   if (source === "direct") {
     const r = await saveAttemptDirect(row);
-    if (r.ok) return { ok: true, source };
-    // Direct DB failed (bad URL / table) — don't silently lose the score,
-    // report the real error so /api/health shows it.
+    if (r.ok) return { ok: true, source, id: r.id };
     return { ok: false, source, error: r.error };
   }
   if (source === "supabase") {
@@ -32,7 +28,7 @@ export async function saveAttemptAny(row: AttemptRow): Promise<{ ok: boolean; so
 export async function fetchAttemptsAny(limit = 100): Promise<AttemptRow[]> {
   const source = getDbSource();
   if (source === "direct") {
-    try { return await fetchAttemptsDirect(limit); } catch { return []; }
+    return await fetchAttemptsDirect(limit);
   }
   if (source === "supabase") return fetchAttempts(limit);
   return [];

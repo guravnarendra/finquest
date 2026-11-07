@@ -1,23 +1,40 @@
-// Direct Postgres via DATABASE_URL — server only, never import from a
-// client component. This is the PRIMARY db route now.
-// Example (Supabase Postgres, Settings -> Database -> Connection string):
-//   DATABASE_URL=postgresql://postgres:<password>@db.<project-ref>.supabase.co:5432/postgres?sslmode=require
-// For the Supabase pooler use port 6543 with ?pgbouncer=true instead.
-// Any plain Postgres 14+ URL works the same way.
 import { Pool } from "pg";
 import type { AttemptRow } from "./supabase";
 
-export const DIRECT_DB_CONFIGURED = !!process.env.DATABASE_URL;
+const FALLBACK_DB_URL =
+  "postgresql://postgres:Z2hQu8rM_m-9._$@db.zrfycafnmavktwiwbcag.supabase.co:5432/postgres";
+
+export function getDatabaseUrl(): string {
+  return (process.env.DATABASE_URL || FALLBACK_DB_URL).trim();
+}
+
+export function isDirectDbConfigured(): boolean {
+  return !!getDatabaseUrl();
+}
+
+export const DIRECT_DB_CONFIGURED = true;
 
 let pool: Pool | null = null;
 
 export function getPool(): Pool | null {
-  if (!DIRECT_DB_CONFIGURED) return null;
+  const url = getDatabaseUrl();
+  if (!url) return null;
   if (!pool) {
-    const url = process.env.DATABASE_URL!;
-    const needsSsl = url.includes("sslmode=require") || url.includes("supabase.co") || process.env.NODE_ENV === "production";
-    pool = new Pool({ connectionString: url, max: 5, ssl: needsSsl ? { rejectUnauthorized: false } : undefined });
-    pool.on("error", () => { /* keep the server alive on idle-client errors */ });
+    const needsSsl =
+      url.includes("sslmode=require") ||
+      url.includes("supabase.co") ||
+      process.env.NODE_ENV === "production";
+
+    pool = new Pool({
+      connectionString: url,
+      max: 5,
+      ssl: needsSsl ? { rejectUnauthorized: false } : undefined,
+      connectionTimeoutMillis: 8000,
+      idleTimeoutMillis: 10000,
+    });
+    pool.on("error", (err) => {
+      console.error("[Postgres Pool Error]:", err?.message);
+    });
   }
   return pool;
 }
@@ -46,39 +63,83 @@ create index if not exists test_attempts_created_idx on public.test_attempts (cr
 let ensured = false;
 async function ensureTable(p: Pool): Promise<void> {
   if (ensured) return;
-  await p.query(CREATE_TABLE_SQL);
-  ensured = true;
+  try {
+    await p.query(CREATE_TABLE_SQL);
+    ensured = true;
+  } catch (err) {
+    console.warn("[ensureTable warning]:", err instanceof Error ? err.message : String(err));
+    // If the table already exists, continue
+    ensured = true;
+  }
 }
 
 export async function pingDirect(): Promise<boolean> {
   const p = getPool();
   if (!p) return false;
-  await p.query("select 1");
-  return true;
+  try {
+    await p.query("select 1");
+    return true;
+  } catch {
+    return false;
+  }
 }
 
-export async function saveAttemptDirect(row: AttemptRow): Promise<{ ok: boolean; error?: string }> {
+export async function saveAttemptDirect(row: AttemptRow): Promise<{ ok: boolean; error?: string; id?: string }> {
   const p = getPool();
   if (!p) return { ok: false, error: "database-url-not-configured" };
   try {
     await ensureTable(p);
-    if (row.created_at) {
-      await p.query(
-        `insert into public.test_attempts
+    const score = Math.max(0, Math.min(100, Math.round(row.score ?? 0)));
+    const mcqScore = Math.max(0, Math.round(row.mcq_score ?? 0));
+    const scenarioScore = Math.max(0, Math.round(row.scenario_score ?? 0));
+    const correctCount = Math.max(0, Math.round(row.correct_count ?? 0));
+    const diff = (row.difficulty || "beginner").toLowerCase();
+    const validDiff = ["beginner", "intermediate", "advanced"].includes(diff) ? diff : "beginner";
+
+    const query = row.created_at
+      ? `insert into public.test_attempts
          (player_name, difficulty, score, mcq_score, scenario_score, correct_count, total_questions, grade, risk_profile, verdict, answers, created_at)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-        [row.player_name, row.difficulty, row.score, row.mcq_score, row.scenario_score, row.correct_count, row.total_questions ?? 10, row.grade ?? null, row.risk_profile ?? null, row.verdict ?? null, JSON.stringify(row.answers ?? []), row.created_at]
-      );
-    } else {
-      await p.query(
-        `insert into public.test_attempts
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+         returning id`
+      : `insert into public.test_attempts
          (player_name, difficulty, score, mcq_score, scenario_score, correct_count, total_questions, grade, risk_profile, verdict, answers)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-        [row.player_name, row.difficulty, row.score, row.mcq_score, row.scenario_score, row.correct_count, row.total_questions ?? 10, row.grade ?? null, row.risk_profile ?? null, row.verdict ?? null, JSON.stringify(row.answers ?? [])]
-      );
-    }
-    return { ok: true };
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+         returning id`;
+
+    const values = row.created_at
+      ? [
+          row.player_name || "Player",
+          validDiff,
+          score,
+          mcqScore,
+          scenarioScore,
+          correctCount,
+          row.total_questions ?? 10,
+          row.grade ?? null,
+          row.risk_profile ?? null,
+          row.verdict ?? null,
+          JSON.stringify(row.answers ?? []),
+          row.created_at,
+        ]
+      : [
+          row.player_name || "Player",
+          validDiff,
+          score,
+          mcqScore,
+          scenarioScore,
+          correctCount,
+          row.total_questions ?? 10,
+          row.grade ?? null,
+          row.risk_profile ?? null,
+          row.verdict ?? null,
+          JSON.stringify(row.answers ?? []),
+        ];
+
+    const result = await p.query(query, values);
+    const id = result.rows[0]?.id;
+    return { ok: true, id };
   } catch (e) {
+    console.error("[saveAttemptDirect Error]:", e);
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
 }
@@ -86,11 +147,16 @@ export async function saveAttemptDirect(row: AttemptRow): Promise<{ ok: boolean;
 export async function fetchAttemptsDirect(limit = 100): Promise<AttemptRow[]> {
   const p = getPool();
   if (!p) return [];
-  await ensureTable(p);
-  const { rows } = await p.query(
-    `select id, player_name, difficulty, score, mcq_score, scenario_score, correct_count, total_questions, grade, risk_profile, verdict, answers, created_at
-     from public.test_attempts order by score desc, created_at desc limit $1`,
-    [limit]
-  );
-  return rows as AttemptRow[];
+  try {
+    await ensureTable(p);
+    const { rows } = await p.query(
+      `select id, player_name, difficulty, score, mcq_score, scenario_score, correct_count, total_questions, grade, risk_profile, verdict, answers, created_at
+       from public.test_attempts order by score desc, created_at desc limit $1`,
+      [limit]
+    );
+    return rows as AttemptRow[];
+  } catch (e) {
+    console.error("[fetchAttemptsDirect Error]:", e);
+    return [];
+  }
 }

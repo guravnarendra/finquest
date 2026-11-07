@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { Play, RotateCw, Trophy } from "lucide-react";
-import { loadHistory, getPlayerName, syncLocalAttemptsToDb, type SavedAttempt } from "@/lib/store";
+import { getPlayerName, cleanupLegacyStorage } from "@/lib/store";
 
 type Row = {
   name: string;
@@ -24,25 +24,7 @@ export default function LeaderboardPage() {
     if (isManual) setRefreshing(true);
     const localPlayer = (getPlayerName() || "").trim().toLowerCase();
 
-    // Local attempts from this device
-    const localAttempts: Row[] = loadHistory().map((a: SavedAttempt) => {
-      const ts = a.date ? new Date(a.date).getTime() : Date.now();
-      return {
-        name: a.playerName || "Player",
-        score: a.score ?? 0,
-        grade: a.grade || "",
-        date: a.date
-          ? new Date(a.date).toLocaleDateString("en-IN", { day: "numeric", month: "short" })
-          : "Today",
-        rawDate: isNaN(ts) ? 0 : ts,
-        you: true,
-      };
-    });
-
     try {
-      // Sync any pending local attempts from this device to DB first
-      await syncLocalAttemptsToDb();
-
       const res = await fetch("/api/attempts", { cache: "no-store" });
       const data = await res.json();
 
@@ -50,8 +32,8 @@ export default function LeaderboardPage() {
 
       const playerMap = new Map<string, Row>();
 
-      if (data.configured && Array.isArray(data.attempts)) {
-        // Process live attempts across all users
+      if (Array.isArray(data.attempts)) {
+        // Process real database attempts across all users
         for (const a of data.attempts) {
           const playerName = (a.player_name || "").trim() || "Anonymous";
           const key = playerName.toLowerCase();
@@ -82,19 +64,6 @@ export default function LeaderboardPage() {
         }
       }
 
-      // Merge local attempts (so current user's latest local attempt is never lost)
-      for (const row of localAttempts) {
-        const key = row.name.toLowerCase();
-        const existing = playerMap.get(key);
-        if (
-          !existing ||
-          row.score > existing.score ||
-          (row.score === existing.score && row.rawDate > existing.rawDate)
-        ) {
-          playerMap.set(key, { ...row, you: true });
-        }
-      }
-
       // Sort descending by score, tie-break by recent date
       const sorted = Array.from(playerMap.values()).sort((a, b) => {
         if (b.score !== a.score) return b.score - a.score;
@@ -102,18 +71,8 @@ export default function LeaderboardPage() {
       });
 
       setRows(sorted.slice(0, 50));
-    } catch {
-      if (!mountedRef.current) return;
-      // If network fails, show local storage attempts without mock data
-      const playerMap = new Map<string, Row>();
-      for (const row of localAttempts) {
-        const key = row.name.toLowerCase();
-        const existing = playerMap.get(key);
-        if (!existing || row.score > existing.score) {
-          playerMap.set(key, { ...row, you: true });
-        }
-      }
-      setRows(Array.from(playerMap.values()).sort((a, b) => b.score - a.score));
+    } catch (err) {
+      console.error("[Leaderboard fetch error]:", err);
     } finally {
       if (mountedRef.current) {
         setLoading(false);
@@ -124,12 +83,13 @@ export default function LeaderboardPage() {
 
   useEffect(() => {
     mountedRef.current = true;
+    cleanupLegacyStorage();
     fetchScores();
 
-    // Real-time polling every 15 seconds
+    // Real-time polling every 10 seconds so new attempts appear across users instantly
     const interval = setInterval(() => {
       fetchScores();
-    }, 15000);
+    }, 10000);
 
     return () => {
       mountedRef.current = false;
