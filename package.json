@@ -25,9 +25,6 @@
     "typescript": "^5"
   },
   "name": "finquest-invest-iq",
-  "overrides": {
-    "magic-string": "0.30.17"
-  },
   "private": true,
   "scripts": {
     "build": "next build --webpack",
