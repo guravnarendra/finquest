@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Play, Clock, Check, X, RotateCcw, BookOpen, Share2, Trophy, Brain, Sparkles, ChevronRight } from "lucide-react";
 import { pickTest, type Difficulty, type Question, SCENARIOS, type Scenario } from "@/lib/questions";
 import { gradeFor, buildVerdict, scoreScenario } from "@/lib/scoring";
-import { saveLocalAttempt, setPlayerName, getPlayerName } from "@/lib/store";
+import { saveLocalAttempt, setPlayerName, getPlayerName, markAttemptSynced } from "@/lib/store";
 
 type VerdictData = {
   totalScore: number; mcqScore: number; scenarioScore: number; aiUsed: boolean;
@@ -171,6 +171,7 @@ export default function TestPage() {
       riskProfile: data.riskProfile,
       verdict: data.verdict,
       date: new Date().toISOString(),
+      synced: false,
     };
     saveLocalAttempt(attempt);
 
@@ -190,7 +191,12 @@ export default function TestPage() {
         verdict: data.verdict,
         answers: finalReview,
       }),
-    }).catch(() => {});
+    })
+      .then((r) => r.json())
+      .then((res) => {
+        if (res?.ok) markAttemptSynced(attempt.id);
+      })
+      .catch(() => {});
   }
 
   const ring = useMemo(() => {

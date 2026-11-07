@@ -62,12 +62,21 @@ export async function saveAttemptDirect(row: AttemptRow): Promise<{ ok: boolean;
   if (!p) return { ok: false, error: "database-url-not-configured" };
   try {
     await ensureTable(p);
-    await p.query(
-      `insert into public.test_attempts
-       (player_name, difficulty, score, mcq_score, scenario_score, correct_count, total_questions, grade, risk_profile, verdict, answers)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-      [row.player_name, row.difficulty, row.score, row.mcq_score, row.scenario_score, row.correct_count, row.total_questions ?? 10, row.grade ?? null, row.risk_profile ?? null, row.verdict ?? null, JSON.stringify(row.answers ?? [])]
-    );
+    if (row.created_at) {
+      await p.query(
+        `insert into public.test_attempts
+         (player_name, difficulty, score, mcq_score, scenario_score, correct_count, total_questions, grade, risk_profile, verdict, answers, created_at)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+        [row.player_name, row.difficulty, row.score, row.mcq_score, row.scenario_score, row.correct_count, row.total_questions ?? 10, row.grade ?? null, row.risk_profile ?? null, row.verdict ?? null, JSON.stringify(row.answers ?? []), row.created_at]
+      );
+    } else {
+      await p.query(
+        `insert into public.test_attempts
+         (player_name, difficulty, score, mcq_score, scenario_score, correct_count, total_questions, grade, risk_profile, verdict, answers)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+        [row.player_name, row.difficulty, row.score, row.mcq_score, row.scenario_score, row.correct_count, row.total_questions ?? 10, row.grade ?? null, row.risk_profile ?? null, row.verdict ?? null, JSON.stringify(row.answers ?? [])]
+      );
+    }
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };

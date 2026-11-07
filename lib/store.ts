@@ -14,6 +14,7 @@ export type SavedAttempt = {
   riskProfile: string;
   verdict: string;
   date: string;
+  synced?: boolean;
 };
 
 const KEY = "finquest_history_v1";
@@ -69,4 +70,63 @@ export function getPlayerName(): string {
 export function setPlayerName(n: string): void {
   if (typeof window === "undefined") return;
   localStorage.setItem("finquest_name", n);
+}
+
+export function markAttemptSynced(id: string): void {
+  if (typeof window === "undefined") return;
+  const history = loadHistory();
+  const idx = history.findIndex((h) => h.id === id);
+  if (idx !== -1) {
+    history[idx].synced = true;
+    localStorage.setItem(KEY, JSON.stringify(history));
+  }
+}
+
+export async function syncLocalAttemptsToDb(): Promise<void> {
+  if (typeof window === "undefined") return;
+  const history = loadHistory();
+  const unsynced = history.filter((a) => !a.synced);
+  if (unsynced.length === 0) return;
+
+  let updated = false;
+  const copy = [...history];
+
+  for (const item of unsynced) {
+    try {
+      const res = await fetch("/api/attempts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          player_name: item.playerName || "Player",
+          difficulty: item.difficulty || "beginner",
+          score: item.score ?? 0,
+          mcq_score: item.mcqScore ?? 0,
+          scenario_score: item.scenarioScore ?? 0,
+          correct_count: item.correctCount ?? 0,
+          total_questions: 10,
+          grade: item.grade || "",
+          risk_profile: item.riskProfile || "",
+          verdict: item.verdict || "",
+          answers: [],
+          created_at: item.date,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.ok) {
+          const idx = copy.findIndex((h) => h.id === item.id);
+          if (idx !== -1) {
+            copy[idx] = { ...copy[idx], synced: true };
+            updated = true;
+          }
+        }
+      }
+    } catch {
+      // Offline / network failure - will retry on next sync
+    }
+  }
+
+  if (updated) {
+    localStorage.setItem(KEY, JSON.stringify(copy));
+  }
 }

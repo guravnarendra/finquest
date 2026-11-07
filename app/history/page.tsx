@@ -2,14 +2,17 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Trash2, Play } from "lucide-react";
-import { loadHistory, type SavedAttempt } from "@/lib/store";
+import { loadHistory, syncLocalAttemptsToDb, type SavedAttempt } from "@/lib/store";
 
 export default function HistoryPage() {
   const [list, setList] = useState<SavedAttempt[]>([]);
-  useEffect(() => { setList(loadHistory()); }, []);
+  useEffect(() => {
+    setList(loadHistory());
+    syncLocalAttemptsToDb().catch(() => {});
+  }, []);
   return (
     <div className="space-y-4">
-      <div className="flex items-start justify-between"><div><h1 className="text-[24px] font-black">My History 📜</h1><p className="muted text-[14px]">Tumhare saare tests — phone me saved{list.length ? ", Supabase ho to cloud me bhi" : ""}.</p></div>
+      <div className="flex items-start justify-between"><div><h1 className="text-[24px] font-black">My History 📜</h1><p className="muted text-[14px]">Tumhare pichle saare tests ka record aur scores.</p></div>
       {list.length > 0 && <button className="btn-ghost px-3 py-2 text-[13px]" onClick={() => { localStorage.removeItem("finquest_history_v1"); setList([]); }}><Trash2 size={15} className="inline" /> Clear</button>}</div>
       {list.length === 0 ? (
         <div className="card p-6 text-center"><div className="text-[40px]">🎯</div><p className="mt-2 font-black">Abhi koi test nahi diya</p><p className="muted text-[13.5px]">Pehla test do — score yahin dikhega.</p><Link href="/test" className="btn-primary mt-4 flex items-center justify-center gap-2"><Play size={17} /> Start First Test</Link></div>

@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { Play, RotateCw, Trophy } from "lucide-react";
-import { loadHistory, getPlayerName, type SavedAttempt } from "@/lib/store";
+import { loadHistory, getPlayerName, syncLocalAttemptsToDb, type SavedAttempt } from "@/lib/store";
 
 type Row = {
   name: string;
@@ -40,6 +40,9 @@ export default function LeaderboardPage() {
     });
 
     try {
+      // Sync any pending local attempts from this device to DB first
+      await syncLocalAttemptsToDb();
+
       const res = await fetch("/api/attempts", { cache: "no-store" });
       const data = await res.json();
 
