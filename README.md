@@ -46,7 +46,7 @@ Priority: `DATABASE_URL` → Supabase anon → kuch nahi (scores phone me). Chec
 - **Bina key ke:** built-in rule-based AI (`lib/scoring.ts`) — scenario answers ko keywords / red-flags / length se 0-10 score karta hai aur template verdict banata hai. Offline bhi chalta hai.
 - **Key ke saath (real LLM — TokenHarbor):** `.env.local` me teeno vars daalo, `/api/verdict` unhi se TokenHarbor ko call karega (`lib/llm.ts`):
 ```bash
-TOKENHARBOR_BASE_URL=https://api.tokenharbor.ai/v1
+TOKENHARBOR_BASE_URL=https://your-tokenharbor-base-url-here
 TOKENHARBOR_MODEL=mimo-v2.6-flash:free
 TOKENHARBOR_API_KEY=your-tokenharbor-api-key
 ```
