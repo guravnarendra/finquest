@@ -37,7 +37,7 @@ export async function saveAttempt(row: AttemptRow): Promise<{ ok: boolean; error
   return { ok: true };
 }
 
-export async function fetchAttempts(limit = 20): Promise<AttemptRow[]> {
+export async function fetchAttempts(limit = 100): Promise<AttemptRow[]> {
   const sb = getSupabase();
   if (!sb) return [];
   const { data, error } = await sb.from("test_attempts").select("*").order("score", { ascending: false }).limit(limit);

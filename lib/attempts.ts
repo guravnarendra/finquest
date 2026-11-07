@@ -29,7 +29,7 @@ export async function saveAttemptAny(row: AttemptRow): Promise<{ ok: boolean; so
   return { ok: false, source, error: "no-database-configured" };
 }
 
-export async function fetchAttemptsAny(limit = 20): Promise<AttemptRow[]> {
+export async function fetchAttemptsAny(limit = 100): Promise<AttemptRow[]> {
   const source = getDbSource();
   if (source === "direct") {
     try { return await fetchAttemptsDirect(limit); } catch { return []; }

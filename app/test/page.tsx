@@ -55,10 +55,12 @@ export default function TestPage() {
   }, [timeLeft]);
 
   function start() {
+    const finalName = (name || "").trim() || getPlayerName() || "Player";
+    setName(finalName);
+    setPlayerName(finalName);
     const qs = pickTest(difficulty);
     setQuestions(qs); setIdx(0); setPicked(null); setMcqScore(0); setCorrectCount(0);
     setStrong([]); setWeak([]); setScenarioText(""); setScenarioAnswers([]); setReview([]); setVerdict(null);
-    if (name.trim()) setPlayerName(name.trim());
     setPhase("playing");
   }
 
@@ -101,6 +103,9 @@ export default function TestPage() {
   }
 
   async function finish(finalAnswers = scenarioAnswers, finalReview = review) {
+    const finalName = (name || "").trim() || getPlayerName() || "Player";
+    setName(finalName);
+    setPlayerName(finalName);
     setPhase("result"); setLoadingVerdict(true);
     let data: VerdictData | null = null;
     try {
@@ -108,7 +113,7 @@ export default function TestPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          playerName: name.trim() || "Player",
+          playerName: finalName,
           difficulty,
           mcqScore,
           strongTopics: strong,
@@ -134,7 +139,7 @@ export default function TestPage() {
       const scenarioScore = scenarioResults.reduce((acc, r) => acc + r.score, 0);
       const totalScore = mcqScore + scenarioScore;
       const fallback = buildVerdict({
-        playerName: name.trim() || "Player",
+        playerName: finalName,
         totalScore,
         mcqScore,
         scenarioResults,
@@ -156,7 +161,7 @@ export default function TestPage() {
 
     const attempt = {
       id: `local-${Date.now()}`,
-      playerName: name.trim() || "Player",
+      playerName: finalName,
       difficulty,
       score: data.totalScore,
       mcqScore: data.mcqScore,
@@ -173,7 +178,7 @@ export default function TestPage() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        player_name: attempt.playerName,
+        player_name: finalName,
         difficulty,
         score: data.totalScore,
         mcq_score: data.mcqScore,
@@ -201,8 +206,26 @@ export default function TestPage() {
           <div className="chip" style={{ color: "#f59e0b" }}>🤖 AI TEST • 10 QUESTIONS</div>
           <h1 className="mt-3 text-[26px] font-black leading-tight">Apna Investor IQ<br />check karo</h1>
           <p className="muted mt-1 text-[14px]">7 MCQ (3 options) + 3 real-life scenario. MCQ me turant Right/Wrong, scenario me AI tumhare answer ko judge karega.</p>
-          <label className="mt-4 block text-[13px] font-bold">Tumhara naam (leaderboard ke liye)</label>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. NG" maxLength={20} className="mt-1 w-full rounded-2xl border bg-[#0d1f16] px-4 py-3.5 outline-none" style={{ borderColor: "#1e3a2c" }} />
+          <div className="mt-4 flex items-center justify-between">
+            <label className="text-[13px] font-bold">Tumhara naam (leaderboard ke liye)</label>
+            {name.trim() ? (
+              <span className="text-[11px] font-bold text-[#34d399] flex items-center gap-1">
+                ✓ Saved in device
+              </span>
+            ) : null}
+          </div>
+          <input
+            value={name}
+            onChange={(e) => {
+              const val = e.target.value;
+              setName(val);
+              setPlayerName(val.trim());
+            }}
+            placeholder="e.g. NG"
+            maxLength={20}
+            className="mt-1 w-full rounded-2xl border bg-[#0d1f16] px-4 py-3.5 outline-none focus:border-[#10b981] transition-colors"
+            style={{ borderColor: "#1e3a2c" }}
+          />
           <label className="mt-4 block text-[13px] font-bold">Level chuno</label>
           <div className="mt-2 grid grid-cols-3 gap-2">
             {(["beginner", "intermediate", "advanced"] as Difficulty[]).map((d) => (
@@ -235,7 +258,7 @@ export default function TestPage() {
                 <div className="absolute inset-0 grid place-items-center"><div><div className="text-[32px] font-black leading-none">{verdict.totalScore}</div><div className="muted text-[11px] font-bold">/ 100</div></div></div>
               </div>
               <div className="mt-3 text-[19px] font-black">{gradeFor(verdict.totalScore)}</div>
-              <div className="mt-1 flex justify-center gap-2"><span className="chip">MCQ {verdict.mcqScore}/70</span><span className="chip">Scenario {verdict.scenarioScore}/30</span><span className="chip" style={{ color: "#34d399" }}>{verdict.aiUsed ? "🤖 Real AI" : "🧠 Smart AI (offline)"}</span></div>
+              <div className="mt-1 flex justify-center gap-2"><span className="chip">MCQ {verdict.mcqScore}/70</span><span className="chip">Scenario {verdict.scenarioScore}/30</span><span className="chip" style={{ color: "#34d399" }}>🤖 AI Verdict</span></div>
               <div className="card2 mt-4 p-4 text-left"><div className="flex items-center gap-2 font-black"><Sparkles size={16} style={{ color: "#f59e0b" }} /> AI Verdict</div><p className="mt-2 text-[14.5px] leading-relaxed">{verdict.verdict}</p><div className="mt-2 chip" style={{ color: "#7dd3fc" }}>Risk Profile: {verdict.riskProfile}</div></div>
               <div className="mt-3 grid grid-cols-2 gap-2 text-left">
                 <div className="card2 p-3"><div className="font-black text-[13px]" style={{ color: "#34d399" }}>✅ Strengths</div>{verdict.strengths.map((s) => <div key={s} className="mt-1 text-[12.5px] leading-snug">• {s}</div>)}</div>

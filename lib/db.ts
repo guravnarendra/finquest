@@ -74,7 +74,7 @@ export async function saveAttemptDirect(row: AttemptRow): Promise<{ ok: boolean;
   }
 }
 
-export async function fetchAttemptsDirect(limit = 20): Promise<AttemptRow[]> {
+export async function fetchAttemptsDirect(limit = 100): Promise<AttemptRow[]> {
   const p = getPool();
   if (!p) return [];
   await ensureTable(p);
