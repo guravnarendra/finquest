@@ -1,0 +1,37 @@
+{
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "lucide-react": "^0.453.0",
+    "next": "16.4.5",
+    "pg": "^8.13.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "description": "FinQuest — mobile-first investing / mutual funds / stocks quiz game with AI verdict. Next.js + Supabase.",
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.4",
+    "@types/node": "^20",
+    "@types/pg": "^8.11.0",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.4.5",
+    "magic-string": "^0.30.17",
+    "postcss": "^8.5.32",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  },
+  "name": "finquest-invest-iq",
+  "overrides": {
+    "magic-string": "0.30.17"
+  },
+  "private": true,
+  "scripts": {
+    "build": "next build --webpack",
+    "dev": "next dev --webpack",
+    "lint": "eslint",
+    "start": "next start",
+    "typecheck": "tsc --noEmit"
+  },
+  "version": "1.0.0"
+}
