@@ -8,6 +8,9 @@
     "react-dom": "19.3.0"
   },
   "description": "FinQuest — mobile-first investing / mutual funds / stocks quiz game with AI verdict. Next.js + Supabase.",
+  "engines": {
+    "node": "20.x || 22.x"
+  },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.4",
     "@types/node": "^20",
