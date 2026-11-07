@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
-import { pickTest, type Difficulty, type Question, type Mcq, type Scenario, type Topic } from "@/lib/questions";
+import { pickTest, type Difficulty, type Question, type Topic } from "@/lib/questions";
 import { getLlmConfig } from "@/lib/llm";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 const VALID_TOPICS: Topic[] = [
   "SIP",
@@ -40,7 +41,7 @@ REQUIREMENTS:
    - id: unique string (e.g. "ai-s1", "ai-s2", "ai-s3")
    - topic: valid topic from the list
    - difficulty: "${diff}"
-   - title: short catchy title in Hinglish (e.g. "Market crash me kya karoge?", "Job chali gayi — ab kya?")
+   - title: short catchy title in Hinglish (e.g. "Market crash me kya karoge?", "Salary aane par kya karoge?")
    - situation: realistic 2-3 sentence Indian scenario (salary, market drop, friend's tip, emergency, etc.)
    - prompt: "Tum kya karoge aur kyun? Apna decision likho."
    - keywords: array of 5-8 smart keywords a good answer should mention (lowercase, e.g. ["sip", "emergency", "liquid fund", "long term", "average", "patience"])
@@ -63,8 +64,9 @@ Format:
         model,
         messages: [{ role: "user", content: prompt }],
         temperature: 0.85,
+        max_tokens: 2500,
       }),
-      signal: AbortSignal.timeout(12000),
+      signal: AbortSignal.timeout(50000),
     });
 
     if (!res.ok) {
@@ -86,8 +88,16 @@ Format:
 
     for (let i = 0; i < parsed.questions.length; i++) {
       const q = parsed.questions[i];
-      if (sanitized.length < 7 && q.kind === "mcq" && Array.isArray(q.options) && q.options.length >= 3) {
-        const cIdx = typeof q.correctIndex === "number" && [0, 1, 2].includes(q.correctIndex) ? q.correctIndex : 0;
+      if (
+        sanitized.length < 7 &&
+        q.kind === "mcq" &&
+        Array.isArray(q.options) &&
+        q.options.length >= 3
+      ) {
+        const cIdx =
+          typeof q.correctIndex === "number" && [0, 1, 2].includes(q.correctIndex)
+            ? q.correctIndex
+            : 0;
         const topic: Topic = VALID_TOPICS.includes(q.topic) ? q.topic : "SIP";
         sanitized.push({
           kind: "mcq",
@@ -99,7 +109,12 @@ Format:
           correctIndex: cIdx as 0 | 1 | 2,
           explanation: q.explanation || "Correct answer explained.",
         });
-      } else if (sanitized.length >= 7 && sanitized.length < 10 && q.kind === "scenario" && q.situation) {
+      } else if (
+        sanitized.length >= 7 &&
+        sanitized.length < 10 &&
+        q.kind === "scenario" &&
+        q.situation
+      ) {
         const topic: Topic = VALID_TOPICS.includes(q.topic) ? q.topic : "Risk";
         sanitized.push({
           kind: "scenario",
@@ -109,7 +124,9 @@ Format:
           title: q.title || "Real-life Scenario",
           situation: q.situation,
           prompt: q.prompt || "Tum kya karoge aur kyun? Apna decision likho.",
-          keywords: Array.isArray(q.keywords) ? q.keywords.map(String) : ["sip", "invest", "long term"],
+          keywords: Array.isArray(q.keywords)
+            ? q.keywords.map(String)
+            : ["sip", "invest", "long term"],
           redFlags: Array.isArray(q.redFlags) ? q.redFlags.map(String) : ["panic", "sell all"],
           ideal: q.ideal || "Long term discipline aur emergency planning zaroori hai.",
           hint: q.hint || "Socho: long term me kya best hoga?",
@@ -122,7 +139,10 @@ Format:
     }
     return null;
   } catch (err) {
-    console.warn("[LLM Questions Generation Error]:", err instanceof Error ? err.message : String(err));
+    console.warn(
+      "[LLM Questions Generation Error]:",
+      err instanceof Error ? err.message : String(err)
+    );
     return null;
   }
 }
@@ -134,7 +154,7 @@ export async function GET(req: Request) {
     ? (diffParam as Difficulty)
     : "beginner";
 
-  // Attempt live AI generation first
+  // Attempt live AI generation
   const aiQuestions = await generateQuestionsWithLlm(difficulty);
 
   if (aiQuestions && aiQuestions.length === 10) {
@@ -145,10 +165,10 @@ export async function GET(req: Request) {
     });
   }
 
-  // Graceful fallback to randomized bank questions
+  // Fresh procedural generation
   const fallback = pickTest(difficulty);
   return NextResponse.json({
-    source: "bank",
+    source: "generated",
     count: fallback.length,
     questions: fallback,
   });

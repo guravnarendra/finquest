@@ -80,7 +80,7 @@ export default function TestPage() {
     try {
       const res = await fetch(`/api/questions?difficulty=${difficulty}`, {
         cache: "no-store",
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.timeout(50000),
       });
       if (res.ok) {
         const data = await res.json();
@@ -271,15 +271,15 @@ export default function TestPage() {
           <div className="card pop p-8 text-center">
             <Brain className="mx-auto animate-pulse" size={44} style={{ color: "#34d399" }} />
             <h2 className="mt-4 text-[21px] font-black leading-tight">
-              AI naye questions generate kar raha hai… 🤖
+              Naye questions generate ho rahe hain… 🤖
             </h2>
             <p className="muted mt-2 text-[14px] leading-relaxed">
-              TokenHarbor AI aapke <span className="text-white font-bold capitalize">{difficulty}</span> level ke liye
-              7 fresh MCQ aur 3 real-world scenario questions bana raha hai.
+              Aapke <span className="text-white font-bold capitalize">{difficulty}</span> level ke liye
+              7 fresh MCQ aur 3 real-world scenarios live generate ho rahe hain.
             </p>
             <div className="mt-5 flex justify-center gap-2">
               <span className="chip" style={{ color: "#34d399" }}>✨ 100% Unique Questions</span>
-              <span className="chip" style={{ color: "#f59e0b" }}>⚡ Live AI Model</span>
+              <span className="chip" style={{ color: "#f59e0b" }}>🧠 Live Evaluation</span>
             </div>
           </div>
         </div>
